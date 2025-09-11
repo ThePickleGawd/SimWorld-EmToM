@@ -494,13 +494,13 @@ class Map:
                 for edge in self.edges:
                     edge_type = getattr(edge, 'type', 'sidewalk')
                     if edge_type == 'sidewalk':
-                        color = QColor(100, 200, 100)  # 绿色
+                        color = QColor(100, 200, 100)
                         width = 2
                     elif edge_type == 'crosswalk':
-                        color = QColor(100, 100, 255)  # 蓝色
+                        color = QColor(100, 100, 255)
                         width = 3
                     else:
-                        color = QColor(200, 200, 200)  # 默认灰色
+                        color = QColor(200, 200, 200)
                         width = 1
 
                     painter.setPen(QPen(color, width))
