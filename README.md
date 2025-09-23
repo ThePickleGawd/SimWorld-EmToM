@@ -1,4 +1,4 @@
-# SimWorld: A World Simulator for Scaling Photorealistic Multi-Agent Interactions
+# SimWorld: An Open-ended Realistic Simulator for Autonomous Agents in Physical and Social Worlds
 ![Overview](https://github.com/user-attachments/assets/6246ad14-2851-4a51-a534-70f59a40e460)
 
 **SimWorld** is a simulation platform for developing and evaluating **LLM/VLM-powered** AI agents in complex physical and social environments.
@@ -10,17 +10,17 @@
 </div>
 
 ## 🔥 News
- - 2025.9 **SimWorld** has been accepted to NeurIPS 2025 main track as **Spotlight** paper! 🎉
+ - 2025.9 **SimWorld** has been accepted to NeurIPS 2025 main track as **spotlight** paper! 🎉
  - 2025.6 The first formal release of **SimWorld** has been published! 🚀
  - 2025.3 Our demo of **SimWolrd** been accepted by CVPR 2025 Demostration Tack! 🎉
 
 ## 💡 Introduction
-Most existing embodied simulators focus on indoor environments. While there are urban simulators, many either lack realism or are limited to specific domains, such as autonomous driving. Moreover, these simulators often don't allow users to dynamically generate new scenes or define custom AI tasks. The main goal of SimWorld is to help bridge the gap between agent performance in structured digital domains and the dynamic challenges of the real world. To do so, the platform is designed to be a foundational tool for advancing real-world agent intelligence across a variety of disciplines.
-
-SimWorld is built on Unreal Engine 5 and offers core capabilities to meet the needs of modern agent development. It provides (1) realistic, open-ended world simulation with accurate physics and language-based procedural generation. Control and interaction are handled through (2) a rich interface for LLM/VLM agents, supporting multi-modal perception and natural language actions. Finally, SimWorld includes (3) diverse and customizable physical and social reasoning scenarios, enabling systematic training and evaluation of complex agent behaviors like navigation, planning, and strategic cooperation.
+SimWorld is built on Unreal Engine 5 and offers core capabilities to meet the needs of modern agent development. It provides:
+- Realistic, open-ended world simulation with accurate physics and language-based procedural generation.
+- Rich interface for LLM/VLM agents, supporting multi-modal perception and natural language actions.
+- Diverse and customizable physical and social reasoning scenarios, enabling systematic training and evaluation of complex agent behaviors like navigation, planning, and strategic cooperation.
 
 ## 🏗️ Architecture
-
 ![Architecture](https://github.com/user-attachments/assets/f5f43638-7583-483f-aadc-1ddf5d6ff27a)
 
 SimWorld's architecture is designed to be modular and flexible, supporting an array of functionalities such as dynamic world generation, agent control, and performance benchmarking. The components are seamlessly integrated to provide a robust platform for **Embodied AI** and **Agents** research and applications.
