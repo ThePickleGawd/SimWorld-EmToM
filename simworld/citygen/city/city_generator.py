@@ -23,7 +23,7 @@ class GenerationState(Enum):
 class CityGenerator:
     """Manages the complete city generation process including roads, buildings, and elements."""
 
-    def __init__(self, config, seed: int = None, num_segments: int = None, generate_element: bool = False, generate_route: bool = False):
+    def __init__(self, config, seed: int = None, num_segments: int = None, generate_element: bool = None, generate_route: bool = None):
         """Initialize the city generator with configuration.
 
         Args:
@@ -58,8 +58,8 @@ class CityGenerator:
         self.input_path = self.config['citygen.input_roads']
         self.input = self.config['citygen.input_layout']
 
-        self.generate_element = generate_element if generate_element else self.config['citygen.element.generation']
-        self.generate_route = generate_route if generate_route else self.config['citygen.route.generation']
+        self.generate_element = generate_element if generate_element is not None else self.config['citygen.element.generation']
+        self.generate_route = generate_route if generate_route is not None else self.config['citygen.route.generation']
 
         self.logger = Logger.get_logger('CityGenerator')
 
