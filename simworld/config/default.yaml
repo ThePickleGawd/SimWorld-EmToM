@@ -4,7 +4,7 @@ simworld:
   ue_manager_path: "/Game/TrafficSystem/UE_Manager.UE_Manager_C"
 
 citygen:
-  input_layout: true
+  input_layout: false
   input_roads: "E:/Projects/SimWorld/output/roads.json"
   input_bounding_boxes: "Bbox.json"
   output_dir: "output"
@@ -28,7 +28,7 @@ citygen:
     building_side_distance: 27
 
   element:
-    generation: true
+    generation: false
     generation_thread_number: 16
     element_building_distance: 8
     element_element_distance: 10
