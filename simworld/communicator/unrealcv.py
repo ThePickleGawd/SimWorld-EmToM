@@ -534,7 +534,7 @@ class UnrealCV(object):
         Args:
             intersection_name: Name of the intersection to add pedestrian signal to.
             pedestrian_signal_name: Name of the pedestrian signal to add.
-        """
+        """ 
         cmd = f'vbp {intersection_name} AddPedSignal {pedestrian_signal_name}'
         with self.lock:
             self.client.request(cmd)
@@ -607,6 +607,7 @@ class UnrealCV(object):
 
     ##############################################################
     # Humanoid System
+    # For '/Game/TrafficSystem/Pedestrian/Base_User_Agent.Base_User_Agent_C'
     ##############################################################
 
     def humanoid_move_forward(self, object_name):
@@ -860,6 +861,27 @@ class UnrealCV(object):
         with self.lock:
             self.client.request(cmd)
 
+    def humanoid_set_path(self, object_name, path):
+        """Set humanoid path.
+
+        Args:
+            object_name: Name of the humanoid object.
+            path: String of path. Use semicolon to separate waypoints and use comma to separate coordinates. Example: "100,100;200,200;300,300"
+        """
+        cmd = f'vbp {object_name} SetPath {path}'
+        with self.lock:
+            self.client.request(cmd)
+
+    def humanoid_follow_path(self, object_name):
+        """Follow path.
+
+        Args:
+            object_name: Name of the humanoid object.
+        """
+        cmd = f'vbp {object_name} FollowPath'
+        with self.lock:
+            self.client.request(cmd)
+
     ##############################################################
     # Camera
     ##############################################################
@@ -1100,25 +1122,9 @@ class UnrealCV(object):
         Returns:
             Decoded image.
         """
-        # img = np.asarray(PIL.Image.open(BytesIO(res)))
-        # img = img[:, :, :-1]  # delete alpha channel
-        # img = img[:, :, ::-1]  # transpose channel order
-        # return img
-        pil_img = PIL.Image.open(BytesIO(res))
-
-        # 2. 统一转换为RGB格式 (关键步骤)
-        #    - 如果原图是RGBA，则去除A通道。
-        #    - 如果原图是L(灰度图)，则转换为RGB。
-        #    - 如果原图是RGB，则保持不变。
-        rgb_img = pil_img.convert('RGB')
-
-        # 3. 转换为Numpy数组
-        img = np.asarray(rgb_img)
-
-        # 4. 将RGB转换为BGR，以适配OpenCV
-        #    这行代码现在是安全的，因为我们已经确保了图像是3通道的RGB
-        img = img[:, :, ::-1]
-
+        img = np.asarray(PIL.Image.open(BytesIO(res)))
+        img = img[:, :, :-1]  # delete alpha channel
+        img = img[:, :, ::-1]  # transpose channel order
         return img
 
     def _decode_bmp(self, res: bytes):
