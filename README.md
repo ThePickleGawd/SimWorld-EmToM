@@ -25,7 +25,7 @@ SimWorld is built on Unreal Engine 5 and offers core capabilities to meet the ne
 
 ## 🏗️ Architecture
 <p align="center">
-    <img width="830" height="681" alt="image" src="https://github.com/user-attachments/assets/a3cfd890-80c2-4504-ae8f-0842625226a1" />
+    <img width="799" height="671" alt="image" src="https://github.com/user-attachments/assets/2e67356a-7dca-4eba-ab57-de1226e080bb" />
 </p>
 
 **SimWorld** consists of three layers: 
