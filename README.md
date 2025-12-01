@@ -101,6 +101,29 @@ To set up your own configuration:
    config = Config('path/to/your_config')    # use absolute path here
    ```
 
+#### Simple Running Example
+
+Once the SimWorld UE5 environment is running (open the map in UE and press **Play**), you can connect from Python and control an in-world humanoid agent in just a few lines:
+
+```python
+from simworld.communicator.unrealcv import UnrealCV
+from simworld.communicator.communicator import Communicator
+from simworld.agent.humanoid import Humanoid
+from simworld.utils.vector import Vector
+
+# Connect to the running UE instance
+ucv = UnrealCV()
+comm = Communicator(ucv)
+
+# 1. Spawn a humanoid agent in the world
+agent_bp = "/Game/TrafficSystem/Pedestrian/Base_User_Agent.Base_User_Agent_C"
+agent = Humanoid(Vector(0, 0), Vector(0, 1))
+comm.spawn_agent(agent, agent_bp)
+
+# 2. Make the agent walk forward and turn left
+comm.humanoid_step_forward(agent.id, 2.0)
+comm.humanoid_rotate(agent.id, 90, "left")
+```
 
 
 ## For Contributors
