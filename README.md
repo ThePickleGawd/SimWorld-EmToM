@@ -123,6 +123,9 @@ class Env:
         self.target = target
 
     def reset(self):
+        # Clear spawned objects
+        self.comm.clear_env()
+        
         # Blueprint path for the humanoid agent to spawn in the UE level
         agent_bp = "/Game/TrafficSystem/Pedestrian/Base_User_Agent.Base_User_Agent_C"
         
@@ -132,14 +135,15 @@ class Env:
         agent = Humanoid(spawn_location, spawn_forward)
         
         # Spawn the humanoid agent in the Unreal world
-        comm.spawn_agent(agent, agent_bp)
+        self.comm.spawn_agent(agent, agent_bp)
+        self.agent_name = self.comm.get_humanoid_name(self.agent.id)
         
         # Define a target position the agent is encouraged to move toward (example value)
         target = Vector(100, 0)
 
     def step(self):
         self.comm.humanoid_step_forward(self.agent.id, 2.0)
-        location = self.comm.unrealcv.get_location(self.agent.id)
+        location = self.comm.unrealcv.get_location(self.agent_name)
         observation = self.comm.get_camera_observation(self.agent.camera_id)
         reward = -distance(location, self.target)
 
@@ -152,7 +156,7 @@ env.reset()
 # Roll out a short trajectory
 for _ in range(100):
     observation, reward = env.step()
-    # TODO: plug this into your RL loop / logging as needed
+    # Plug this into your RL loop / logging as needed
 ```
 
 
