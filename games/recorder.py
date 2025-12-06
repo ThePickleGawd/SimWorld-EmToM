@@ -7,9 +7,7 @@ import json
 import logging
 import os
 import shutil
-import signal
-import subprocess
-import sys
+from games.process_frames import encode_video
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
@@ -75,11 +73,6 @@ class GameRecorder:
 
         # Live preview window (opencv)
         self._preview_window = None
-
-        # Register cleanup handlers
-        self._original_sigint = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, self._handle_interrupt)
-        atexit.register(self._cleanup)
 
     def start(self) -> Path:
         """
@@ -168,8 +161,14 @@ class GameRecorder:
             "game_state": self.game.game_data.copy(),
             "agent_positions": {
                 agent_id: {
-                    "position": list(agent.humanoid.position) if agent.humanoid else None,
-                    "direction": list(agent.humanoid.direction) if agent.humanoid else None,
+                    "position": [
+                        agent.humanoid.position.x,
+                        agent.humanoid.position.y,
+                    ] if agent.humanoid and agent.humanoid.position else None,
+                    "direction": [
+                        agent.humanoid.direction.x,
+                        agent.humanoid.direction.y,
+                    ] if agent.humanoid and agent.humanoid.direction else None,
                 }
                 for agent_id, agent in self.game.agents.items()
             },
@@ -204,18 +203,6 @@ class GameRecorder:
             self.events_log.close()
         if self.game_log:
             self.game_log.close()
-
-        # Encode videos for each agent
-        for agent_id, frames_dir in self.frame_dirs.items():
-            frame_count = self.frame_counts[agent_id]
-            if frame_count > 0:
-                video_path = self.agents_dir / agent_id / "first_person.mp4"
-                self._encode_video(frames_dir, video_path, frame_count)
-
-                # Delete frames if video created successfully
-                if video_path.exists() and not self.keep_frames:
-                    shutil.rmtree(frames_dir)
-                    logger.debug(f"Deleted frames for {agent_id}")
 
         # Write game summary
         if result:
@@ -313,46 +300,6 @@ class GameRecorder:
             self.events_log.write(f"[{timestamp}] {event}\n")
             self.events_log.flush()
 
-    def _encode_video(self, frames_dir: Path, output_path: Path, frame_count: int) -> bool:
-        """Encode frames to MP4 using ffmpeg."""
-        if frame_count == 0:
-            return False
-
-        # Build ffmpeg command
-        input_pattern = str(frames_dir / "%06d.jpg")
-        cmd = [
-            "ffmpeg",
-            "-y",  # Overwrite output
-            "-framerate", str(self.video_fps),
-            "-i", input_pattern,
-            "-c:v", "libx264",
-            "-pix_fmt", "yuv420p",
-            "-crf", "23",  # Quality (lower = better)
-            str(output_path),
-        ]
-
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout
-            )
-
-            if result.returncode == 0:
-                logger.info(f"Encoded video: {output_path} ({frame_count} frames)")
-                return True
-            else:
-                logger.error(f"ffmpeg failed: {result.stderr}")
-                return False
-
-        except subprocess.TimeoutExpired:
-            logger.error("ffmpeg timed out")
-            return False
-        except FileNotFoundError:
-            logger.error("ffmpeg not found - install it to encode videos")
-            return False
-
     def _update_preview(self, observations: dict[str, "AgentObservation"]) -> None:
         """Update live preview window."""
         try:
@@ -387,16 +334,3 @@ class GameRecorder:
         except Exception as e:
             logger.debug(f"Preview error: {e}")
 
-    def _handle_interrupt(self, signum, frame) -> None:
-        """Handle Ctrl+C - finalize recording before exit."""
-        logger.info("\nInterrupt received - saving recording...")
-        self.finalize()
-
-        # Restore original handler and re-raise
-        signal.signal(signal.SIGINT, self._original_sigint)
-        sys.exit(0)
-
-    def _cleanup(self) -> None:
-        """Cleanup on exit."""
-        if self._started and not self._finalized:
-            self.finalize()

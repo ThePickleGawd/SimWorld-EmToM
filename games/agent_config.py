@@ -93,9 +93,9 @@ class AgentConfig:
     team: str | None = None
 
     # LLM configuration
-    model_name: str = "gpt-4o"
+    model_name: str = "gpt-5-mini"
     provider: str = "openai"
-    temperature: float = 0.7
+    temperature: float = 1.0
 
     # Prompt configuration
     prompt_config: AgentPromptConfig = field(default_factory=AgentPromptConfig)

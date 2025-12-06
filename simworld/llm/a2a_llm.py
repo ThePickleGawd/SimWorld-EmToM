@@ -23,7 +23,7 @@ class A2ALLM(BaseLLM):
 
         self.logger = Logger.get_logger('A2ALLM')
 
-    def generate_instructions(self, system_prompt, user_prompt, images=[], max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def generate_instructions(self, system_prompt, user_prompt, images=[], max_tokens=2048, temperature=1, top_p=1.0, response_format=BaseModel):
         """Generate instructions for the Local Planner system.
 
         Args:
@@ -42,7 +42,7 @@ class A2ALLM(BaseLLM):
         else:
             raise ValueError(f'Invalid provider: {self.provider}')
 
-    def _generate_instructions_openai(self, system_prompt, user_prompt, images=[], max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def _generate_instructions_openai(self, system_prompt, user_prompt, images=[], max_tokens=2048, temperature=1, top_p=1.0, response_format=BaseModel):
         start_time = time.time()
         user_content = []
         user_content.append({'type': 'text', 'text': user_prompt})
@@ -55,11 +55,16 @@ class A2ALLM(BaseLLM):
                 'image_url': {'url': f'data:image/jpeg;base64,{img_data}'}
             })
 
+        # GPT-5 family uses max_completion_tokens instead of max_tokens
+        token_param = {'max_tokens': max_tokens}
+        if str(self.model_name).lower().startswith('gpt-5'):
+            token_param = {'max_completion_tokens': max_tokens}
+
         try:
             response = self.client.beta.chat.completions.parse(
                 model=self.model_name,
                 messages=[{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_content}],
-                max_tokens=max_tokens,
+                **token_param,
                 temperature=temperature,
                 top_p=top_p,
                 response_format=response_format,
@@ -71,7 +76,7 @@ class A2ALLM(BaseLLM):
 
         return action_json, time.time() - start_time
 
-    def _generate_instructions_openrouter(self, system_prompt, user_prompt, images=[], max_tokens=None, temperature=0.7, top_p=1.0, response_format=BaseModel):
+    def _generate_instructions_openrouter(self, system_prompt, user_prompt, images=[], max_tokens=2048, temperature=0.7, top_p=1.0, response_format=BaseModel):
 
         start_time = time.time()
         user_content = []

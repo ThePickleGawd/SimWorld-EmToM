@@ -8,6 +8,8 @@ import logging
 import random
 from typing import Any
 
+import math
+
 from simworld.utils.vector import Vector
 
 from games.base import BaseGame, GameResult, GameState
@@ -46,17 +48,18 @@ class HideAndSeekGame(BaseGame):
     max_players = 8
     version = "1.0.0"
 
-    # Game-specific constants
-    TAG_DISTANCE = 200.0  # cm (2 meters)
-    HIDING_PHASE_STEPS = 50
-    SPAWN_AREA_SIZE = 1000.0  # cm
-
     def __init__(
         self,
         num_hiders: int = 2,
         num_seekers: int = 1,
         hiding_phase_steps: int = 50,
         model_name: str = "gpt-4o",
+        tag_distance: float = 200.0,
+        spawn_area_size: float = 1000.0,
+        max_steps: int = 1000,
+        verbose: bool = False,
+        unrealcv=None,
+        communicator=None,
         **kwargs
     ):
         """
@@ -67,13 +70,22 @@ class HideAndSeekGame(BaseGame):
             num_seekers: Number of seeker agents
             hiding_phase_steps: Steps hiders get to hide before seekers start
             model_name: LLM model to use for agents
+            tag_distance: Distance threshold for tagging (cm)
+            spawn_area_size: Radius for spawn distribution (cm)
         """
-        super().__init__(**kwargs)
+        super().__init__(
+            unrealcv=unrealcv,
+            communicator=communicator,
+            max_steps=max_steps,
+            verbose=verbose,
+        )
 
         self.num_hiders = num_hiders
         self.num_seekers = num_seekers
         self.hiding_phase_steps = hiding_phase_steps
         self.model_name = model_name
+        self.tag_distance = float(tag_distance)
+        self.spawn_area_size = float(spawn_area_size)
 
         # Game state
         self.hider_ids: list[str] = []
@@ -95,7 +107,7 @@ class HideAndSeekGame(BaseGame):
                 role=ROLE_HIDER,
                 team="hiders",
                 model_name=self.model_name,
-                temperature=0.8,  # More creative hiding strategies
+                temperature=1,
                 spawn_position=self._get_spawn_position(i, "hider"),
                 prompt_config=self._create_hider_prompt_config(),
             ))
@@ -110,7 +122,7 @@ class HideAndSeekGame(BaseGame):
                 role=ROLE_SEEKER,
                 team="seekers",
                 model_name=self.model_name,
-                temperature=0.6,  # More methodical searching
+                temperature=1,
                 spawn_position=self._get_spawn_position(i, "seeker"),
                 prompt_config=self._create_seeker_prompt_config(),
             ))
@@ -122,9 +134,8 @@ class HideAndSeekGame(BaseGame):
         if role == "hider":
             # Hiders spawn spread out
             angle = (index / max(self.num_hiders, 1)) * 360
-            import math
-            x = self.SPAWN_AREA_SIZE * 0.3 * math.cos(math.radians(angle))
-            y = self.SPAWN_AREA_SIZE * 0.3 * math.sin(math.radians(angle))
+            x = self.spawn_area_size * 0.3 * math.cos(math.radians(angle))
+            y = self.spawn_area_size * 0.3 * math.sin(math.radians(angle))
             return (x, y)
         else:
             # Seekers spawn at center
@@ -269,7 +280,12 @@ Respond with a JSON object:
         camera_image = None
         if agent.humanoid and hasattr(agent.humanoid, 'camera_id'):
             try:
-                camera_image = self.communicator.get_camera_image(agent.humanoid.camera_id)
+                # Use the standard camera API (matches examples/record.ipynb)
+                camera_image = self.communicator.get_camera_observation(
+                    agent.humanoid.camera_id,
+                    viewmode="lit",
+                    mode="direct",
+                )
             except Exception:
                 pass
 
@@ -398,8 +414,8 @@ Respond with a JSON object:
 
         # Check distance
         distance = self.get_distance_between_agents(agent_id, target_id)
-        if distance is None or distance > self.TAG_DISTANCE:
-            return {"success": False, "message": f"Too far to tag (distance: {distance:.0f}cm, need: {self.TAG_DISTANCE}cm)"}
+        if distance is None or distance > self.tag_distance:
+            return {"success": False, "message": f"Too far to tag (distance: {distance:.0f}cm, need: {self.tag_distance}cm)"}
 
         # Tag successful!
         self.tagged_hiders.add(target_id)
@@ -440,7 +456,7 @@ Respond with a JSON object:
             hider = self.agents[hider_id]
             if hider.humanoid:
                 distance = pos.distance(hider.humanoid.position)
-                if distance <= self.TAG_DISTANCE * 3:  # Search range is 3x tag distance
+                if distance <= self.tag_distance * 3:  # Search range is 3x tag distance
                     found.append((hider_id, distance))
 
         if found:

@@ -95,7 +95,6 @@ class BaseGame(ABC):
         unrealcv: UnrealCV | None = None,
         communicator: Communicator | None = None,
         max_steps: int = 1000,
-        step_delay: float = 0.1,
         verbose: bool = False,
     ):
         """
@@ -105,13 +104,11 @@ class BaseGame(ABC):
             unrealcv: UnrealCV connection (created if not provided)
             communicator: Communicator instance (created if not provided)
             max_steps: Maximum steps before game ends in draw
-            step_delay: Delay between steps in seconds
             verbose: Enable verbose logging
         """
         self.unrealcv = unrealcv
         self.communicator = communicator
         self.max_steps = max_steps
-        self.step_delay = step_delay
         self.verbose = verbose
 
         # Runtime state

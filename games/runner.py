@@ -75,7 +75,7 @@ def run_game(
     config_path: str | None = None,
     ip: str = "127.0.0.1",
     port: int = 9000,
-    max_steps: int = 1000,
+    max_steps: int | None = None,
     verbose: bool = False,
     record: bool = True,
     output_dir: str = "results",
@@ -91,11 +91,17 @@ def run_game(
     """
     from games.recorder import GameRecorder
 
+    # Default to a game-local config if none provided
+    if config_path is None:
+        default_cfg = Path(__file__).parent / "examples" / game_name / "config.yaml"
+        if default_cfg.exists():
+            config_path = str(default_cfg)
+
     # Load config
     config = load_config(config_path)
 
     # Override with command line args
-    if max_steps:
+    if max_steps is not None:
         config['max_steps'] = max_steps
     if verbose:
         config['verbose'] = verbose
@@ -153,14 +159,16 @@ def run_game(
     print("Starting game loop...\n")
     start_time = time.time()
 
+    interrupted = False
     try:
         result = game.run()
     except KeyboardInterrupt:
         print("\n\nGame interrupted by user")
+        interrupted = True
         result = None
     finally:
         # Finalize recording before disconnect
-        if recorder:
+        if recorder and not interrupted:
             recorder.finalize(result)
         game.disconnect()
 
@@ -287,8 +295,8 @@ Examples:
     parser.add_argument(
         '--max-steps', '-m',
         type=int,
-        default=1000,
-        help='Maximum game steps (default: 1000)'
+        default=None,
+        help='Maximum game steps (default: use game config)'
     )
 
     parser.add_argument(
