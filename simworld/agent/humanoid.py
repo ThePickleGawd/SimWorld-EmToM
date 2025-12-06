@@ -1,10 +1,13 @@
 """Humanoid agent class."""
+from typing import TYPE_CHECKING, Optional
 
 from simworld.agent.base_agent import BaseAgent
-from simworld.communicator.communicator import Communicator
 from simworld.config import Config
 from simworld.map.map import Map
 from simworld.utils.vector import Vector
+
+if TYPE_CHECKING:
+    from simworld.communicator.communicator import Communicator
 
 
 class Humanoid(BaseAgent):
@@ -13,7 +16,14 @@ class Humanoid(BaseAgent):
     _id_counter = 0
     _camera_id_counter = _id_counter + 1
 
-    def __init__(self, position: Vector, direction: Vector, map: Map = None, communicator: Communicator = None, config: Config = None):
+    def __init__(
+        self,
+        position: Vector,
+        direction: Vector,
+        map: Optional[Map] = None,
+        communicator: Optional['Communicator'] = None,
+        config: Optional[Config] = None
+    ):
         """Initialize humanoid agent.
 
         Args:
