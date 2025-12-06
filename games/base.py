@@ -406,6 +406,11 @@ class BaseGame(ABC):
                 total_steps=self.current_step,
             )
 
+        # Collect data for recording
+        observations: dict[str, AgentObservation] = {}
+        actions: dict[str, AgentAction] = {}
+        results: dict[str, dict[str, Any]] = {}
+
         # Get actions from all agents
         for agent_id, agent in self.agents.items():
             if not agent.is_alive:
@@ -413,18 +418,30 @@ class BaseGame(ABC):
 
             # Build observation for this agent
             observation = self.build_observation(agent_id)
+            observations[agent_id] = observation
 
             # Get action from LLM
             action = self._get_agent_action(agent_id, observation)
+            actions[agent_id] = action
 
             # Process the action
             result = self.process_action(agent_id, action)
+            results[agent_id] = result
 
             # Store action history
             agent.action_history.append(action)
 
             # Hook for subclasses
             self.on_agent_action(agent_id, action, result)
+
+        # Record this step if recorder is attached
+        if hasattr(self, '_recorder') and self._recorder:
+            self._recorder.record_step(
+                step=self.current_step,
+                observations=observations,
+                actions=actions,
+                results=results,
+            )
 
         self.on_step_end(self.current_step)
         return None

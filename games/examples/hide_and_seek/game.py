@@ -365,10 +365,12 @@ Respond with a JSON object:
         direction = params.get("direction", "forward")
         duration = min(max(float(params.get("duration", 1)), 1), 5)
 
+        # humanoid_step_forward(humanoid_id, duration, direction)
+        # direction: 0 = forward, 1 = backward
         if direction == "forward":
-            self.communicator.humanoid_move_forward(agent.humanoid.id, duration)
+            self.communicator.humanoid_step_forward(agent.humanoid.id, duration, 0)
         elif direction == "backward":
-            self.communicator.humanoid_move_forward(agent.humanoid.id, -duration)
+            self.communicator.humanoid_step_forward(agent.humanoid.id, duration, 1)
         # Left/right would require lateral movement or turn+move
 
         return {"success": True, "message": f"Moved {direction} for {duration}s"}

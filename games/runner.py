@@ -77,6 +77,11 @@ def run_game(
     port: int = 9000,
     max_steps: int = 1000,
     verbose: bool = False,
+    record: bool = True,
+    output_dir: str = "results",
+    video_fps: int = 30,
+    live_preview: bool = False,
+    keep_frames: bool = False,
 ) -> int:
     """
     Run a game by name.
@@ -84,6 +89,8 @@ def run_game(
     Returns:
         Exit code (0 for success, 1 for error)
     """
+    from games.recorder import GameRecorder
+
     # Load config
     config = load_config(config_path)
 
@@ -104,6 +111,8 @@ def run_game(
     print(f"Starting: {game.name}")
     print(f"Description: {game.description}")
     print(f"Max Steps: {game.max_steps}")
+    if record:
+        print(f"Recording: {output_dir}/")
     print(f"{'=' * 60}\n")
 
     # Connect to simulation
@@ -124,6 +133,22 @@ def run_game(
 
     print(f"Initialized with {len(game.agents)} agents\n")
 
+    # Setup recorder
+    recorder = None
+    if record:
+        recorder = GameRecorder(
+            game=game,
+            output_dir=output_dir,
+            video_fps=video_fps,
+            enable_live_preview=live_preview,
+            keep_frames=keep_frames,
+        )
+        session_dir = recorder.start()
+        print(f"Recording to: {session_dir}\n")
+
+        # Attach recorder to game for step callbacks
+        game._recorder = recorder
+
     # Run the game
     print("Starting game loop...\n")
     start_time = time.time()
@@ -134,6 +159,9 @@ def run_game(
         print("\n\nGame interrupted by user")
         result = None
     finally:
+        # Finalize recording before disconnect
+        if recorder:
+            recorder.finalize(result)
         game.disconnect()
 
     elapsed = time.time() - start_time
@@ -166,6 +194,10 @@ def run_game(
                 print(f"  {agent_id}: {score:.1f}")
     else:
         print("\nGame did not complete normally")
+
+    # Print recording location
+    if recorder and recorder.session_dir:
+        print(f"\nRecording saved to: {recorder.session_dir}")
 
     print(f"\n{'=' * 60}\n")
 
@@ -271,6 +303,39 @@ Examples:
         help='Interactive mode - select game from menu'
     )
 
+    # Recording options
+    parser.add_argument(
+        '--no-record',
+        action='store_true',
+        help='Disable recording (recording is enabled by default)'
+    )
+
+    parser.add_argument(
+        '--output-dir', '-o',
+        type=str,
+        default='results',
+        help='Directory for recording output (default: results/)'
+    )
+
+    parser.add_argument(
+        '--fps',
+        type=int,
+        default=30,
+        help='Video FPS for recordings (default: 30)'
+    )
+
+    parser.add_argument(
+        '--live-preview',
+        action='store_true',
+        help='Show live preview window of agent views (requires display)'
+    )
+
+    parser.add_argument(
+        '--keep-frames',
+        action='store_true',
+        help='Keep raw frames after video encoding'
+    )
+
     args = parser.parse_args()
 
     # Set log level
@@ -296,6 +361,11 @@ Examples:
             port=args.port,
             max_steps=args.max_steps,
             verbose=args.verbose,
+            record=not args.no_record,
+            output_dir=args.output_dir,
+            video_fps=args.fps,
+            live_preview=args.live_preview,
+            keep_frames=args.keep_frames,
         )
 
     if args.game:
@@ -306,6 +376,11 @@ Examples:
             port=args.port,
             max_steps=args.max_steps,
             verbose=args.verbose,
+            record=not args.no_record,
+            output_dir=args.output_dir,
+            video_fps=args.fps,
+            live_preview=args.live_preview,
+            keep_frames=args.keep_frames,
         )
 
     # No command specified - show help
