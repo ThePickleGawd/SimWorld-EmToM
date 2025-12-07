@@ -2,7 +2,6 @@
 Game recording system for capturing agent POVs, reasoning logs, and game state.
 """
 
-import atexit
 import json
 import logging
 import os
@@ -10,12 +9,14 @@ import shutil
 from games.process_frames import encode_video
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, Tuple
+import threading
+import time
 
 import numpy as np
 
 if TYPE_CHECKING:
-    from games.base import BaseGame, GameResult
+    from games.base import BaseGame, GameResult, CameraStream
     from games.agent_config import AgentAction, AgentObservation
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,10 @@ class GameRecorder:
 
         # Frame storage per agent
         self.frame_counts: dict[str, int] = {}
-        self.frame_dirs: dict[str, Path] = {}
+        self.frame_dirs: dict[Tuple[str, str], Path] = {}
+        self.streams: list["CameraStream"] = []
+        self.stream_frame_counts: dict[Tuple[str, str], int] = {}
+        self.step_frame_dirs: dict[str, Path] = {}
 
         # Log file handles
         self.reasoning_logs: dict[str, Any] = {}
@@ -70,6 +74,8 @@ class GameRecorder:
         # State
         self._started = False
         self._finalized = False
+        self._stop_capture = False
+        self._capture_thread: threading.Thread | None = None
 
         # Live preview window (opencv)
         self._preview_window = None
@@ -94,16 +100,31 @@ class GameRecorder:
         self.session_dir.mkdir(parents=True, exist_ok=True)
         self.agents_dir.mkdir(exist_ok=True)
 
+        # Collect camera streams (first/third-person)
+        try:
+            self.streams = self.game.get_camera_streams()
+        except Exception:
+            self.streams = []
+
         # Create per-agent directories and logs
         for agent_id in self.game.agents:
             agent_dir = self.agents_dir / agent_id
             agent_dir.mkdir(exist_ok=True)
 
-            frames_dir = agent_dir / "frames"
-            frames_dir.mkdir(exist_ok=True)
+            # Step-level observation frames (one per LLM step)
+            step_dir = agent_dir / "step_observations"
+            step_dir.mkdir(exist_ok=True)
+            self.step_frame_dirs[agent_id] = step_dir
 
-            self.frame_dirs[agent_id] = frames_dir
-            self.frame_counts[agent_id] = 0
+            # Stream-specific frame dirs
+            for stream in [s for s in self.streams if s.agent_id == agent_id]:
+                stream_dir = agent_dir / stream.label
+                stream_dir.mkdir(exist_ok=True)
+                frames_dir = stream_dir / "frames"
+                frames_dir.mkdir(exist_ok=True)
+                key = (agent_id, stream.label)
+                self.frame_dirs[key] = frames_dir
+                self.stream_frame_counts[key] = 0
 
             # Open reasoning log
             log_path = agent_dir / "reasoning.log"
@@ -117,10 +138,52 @@ class GameRecorder:
         self._log_event(f"Game started: {self.game.name}")
         self._log_event(f"Agents: {list(self.game.agents.keys())}")
 
+        # Start continuous capture thread for video FPS
+        if self.streams:
+            self._stop_capture = False
+            self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+            self._capture_thread.start()
+
         self._started = True
         logger.info(f"Recording session started: {self.session_dir}")
 
         return self.session_dir
+
+    # ------------------------------------------------------------------ #
+    # Continuous capture for smooth video (decoupled from LLM steps)
+    # ------------------------------------------------------------------ #
+    def _capture_loop(self) -> None:
+        """Capture frames from all streams at a fixed FPS."""
+        interval = 1.0 / max(self.video_fps, 1)
+        while not self._stop_capture:
+            start = time.time()
+            try:
+                self._capture_all_streams()
+            except Exception as e:
+                logger.debug(f"Capture loop error: {e}")
+            elapsed = time.time() - start
+            sleep_time = max(0.0, interval - elapsed)
+            time.sleep(sleep_time)
+
+    def _capture_all_streams(self) -> None:
+        """Capture one frame from each configured stream."""
+        for stream in self.streams:
+            image = None
+            try:
+                if stream.fetch_fn:
+                    image = stream.fetch_fn()
+                elif stream.camera_id is not None:
+                    image = self.game.communicator.get_camera_observation(
+                        stream.camera_id,
+                        viewmode=stream.viewmode,
+                        mode=stream.mode,
+                    )
+            except Exception as exc:
+                logger.debug(f"Capture failed for {stream.agent_id}/{stream.label}: {exc}")
+                continue
+
+            if image is not None:
+                self._save_stream_frame(stream.agent_id, stream.label, image)
 
     def record_step(
         self,
@@ -147,9 +210,9 @@ class GameRecorder:
             action = actions.get(agent_id)
             result = results.get(agent_id, {})
 
-            # Save camera frame
+            # Save per-step observation frame (what the agent saw this step)
             if obs and obs.camera_image is not None:
-                self._save_frame(agent_id, obs.camera_image)
+                self._save_step_frame(agent_id, step, obs.camera_image)
 
             # Write reasoning log
             if action:
@@ -226,13 +289,36 @@ class GameRecorder:
             except ImportError:
                 pass
 
+        # Stop capture thread
+        self._stop_capture = True
+        if self._capture_thread:
+            self._capture_thread.join(timeout=1.0)
+
+        # Encode videos per stream
+        if self.agents_dir:
+            for key, frames_dir in self.frame_dirs.items():
+                agent_id, label = key
+                output_path = self.agents_dir / agent_id / f"{label}.mp4"
+                encode_video(frames_dir, output_path, self.video_fps)
+                if not self.keep_frames:
+                    for frame_file in frames_dir.glob("*.jpg"):
+                        frame_file.unlink()
+                    try:
+                        frames_dir.rmdir()
+                    except OSError:
+                        pass
+
         self._finalized = True
         logger.info(f"Recording finalized: {self.session_dir}")
 
-    def _save_frame(self, agent_id: str, image: np.ndarray) -> None:
-        """Save a camera frame as JPEG."""
-        frame_num = self.frame_counts[agent_id]
-        frame_path = self.frame_dirs[agent_id] / f"{frame_num:06d}.jpg"
+    def _save_stream_frame(self, agent_id: str, label: str, image: np.ndarray) -> None:
+        """Save a continuous-stream frame as JPEG."""
+        key = (agent_id, label)
+        if key not in self.frame_dirs:
+            return
+
+        frame_num = self.stream_frame_counts.get(key, 0)
+        frame_path = self.frame_dirs[key] / f"{frame_num:06d}.jpg"
 
         try:
             # Handle different image formats
@@ -247,10 +333,30 @@ class GameRecorder:
                 with open(frame_path, "wb") as f:
                     f.write(image)
 
-            self.frame_counts[agent_id] = frame_num + 1
+            self.stream_frame_counts[key] = frame_num + 1
 
         except Exception as e:
-            logger.warning(f"Failed to save frame for {agent_id}: {e}")
+            logger.warning(f"Failed to save frame for {agent_id}/{label}: {e}")
+
+    def _save_step_frame(self, agent_id: str, step: int, image: np.ndarray) -> None:
+        """Save the observation frame associated with a specific LLM step."""
+        step_dir = self.step_frame_dirs.get(agent_id)
+        if not step_dir:
+            return
+
+        frame_path = step_dir / f"{step:06d}.jpg"
+
+        try:
+            if isinstance(image, np.ndarray):
+                import cv2
+                if len(image.shape) == 3 and image.shape[2] == 3:
+                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(str(frame_path), image)
+            else:
+                with open(frame_path, "wb") as f:
+                    f.write(image)
+        except Exception as e:
+            logger.warning(f"Failed to save step frame for {agent_id}: {e}")
 
     def _write_reasoning(
         self,
@@ -333,4 +439,3 @@ class GameRecorder:
             pass  # OpenCV not available
         except Exception as e:
             logger.debug(f"Preview error: {e}")
-

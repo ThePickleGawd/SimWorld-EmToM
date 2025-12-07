@@ -10,7 +10,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import BaseModel
 
@@ -62,6 +62,17 @@ class GameAgent:
     is_alive: bool = True
     action_history: list[AgentAction] = field(default_factory=list)
     message_inbox: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CameraStream:
+    """Descriptor for a camera stream to record."""
+    agent_id: str
+    label: str = "first_person"
+    camera_id: int | None = None
+    viewmode: str = "lit"
+    mode: str = "direct"
+    fetch_fn: Callable[[], Any] | None = None  # Optional custom capture function
 
 
 class BaseGame(ABC):
@@ -120,6 +131,9 @@ class BaseGame(ABC):
         # Connection state
         self._connected = False
 
+    # Default UE manager path (required for position queries)
+    UE_MANAGER_PATH = "/Game/TrafficSystem/UE_Manager.UE_Manager_C"
+
     def connect(self, port: int = 9000, ip: str = "127.0.0.1") -> bool:
         """Connect to the Unreal Engine simulation."""
         if self._connected:
@@ -130,6 +144,11 @@ class BaseGame(ABC):
                 self.unrealcv = UnrealCV(port=port, ip=ip)
             if self.communicator is None:
                 self.communicator = Communicator(self.unrealcv)
+
+            # Spawn UE manager (required for get_position_and_direction)
+            self.communicator.spawn_ue_manager(self.UE_MANAGER_PATH)
+            logger.info("UE Manager spawned")
+
             self._connected = True
             logger.info(f"Connected to simulation at {ip}:{port}")
             return True
@@ -249,6 +268,23 @@ class BaseGame(ABC):
         """Called after each agent action is processed."""
         pass
 
+    def get_camera_streams(self) -> list["CameraStream"]:
+        """
+        List camera streams to record.
+
+        By default, returns first-person cameras for humanoid agents. Games can
+        override to add additional streams (e.g., third-person or overview).
+        """
+        streams: list[CameraStream] = []
+        for agent_id, agent in self.agents.items():
+            if agent.humanoid and hasattr(agent.humanoid, "camera_id"):
+                streams.append(CameraStream(
+                    agent_id=agent_id,
+                    label="first_person",
+                    camera_id=agent.humanoid.camera_id,
+                ))
+        return streams
+
     # =========================================================================
     # Core game loop
     # =========================================================================
@@ -317,7 +353,7 @@ class BaseGame(ABC):
             )
 
             self.agents[config.agent_id] = game_agent
-            logger.info(f"Spawned agent {config.agent_id} at {pos}")
+            logger.info(f"Spawned agent {config.agent_id} (humanoid.id={humanoid.id}) at position ({pos.x:.1f}, {pos.y:.1f})")
             return True
 
         except Exception as e:
@@ -383,6 +419,8 @@ class BaseGame(ABC):
 
     def _run_step(self) -> GameResult | None:
         """Run a single game step. Returns GameResult if game ended."""
+        if self.verbose:
+            logger.info(f"=== Step {self.current_step} ===")
         self.on_step_start(self.current_step)
 
         # Check end conditions before agent actions

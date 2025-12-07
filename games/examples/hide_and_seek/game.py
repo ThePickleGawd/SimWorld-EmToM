@@ -5,10 +5,10 @@ A multi-agent game where hiders try to stay hidden while seekers try to find the
 """
 
 import logging
-import random
-from typing import Any
-
 import math
+import random
+import time
+from typing import Any
 
 from simworld.utils.vector import Vector
 
@@ -270,6 +270,9 @@ Respond with a JSON object:
 
     def build_observation(self, agent_id: str) -> AgentObservation:
         """Build observation for an agent."""
+        # Sync local agent poses with simulator before building observations
+        self._refresh_agent_poses()
+
         agent = self.agents[agent_id]
 
         # Get position and direction
@@ -343,9 +346,43 @@ Respond with a JSON object:
             messages=messages,
         )
 
+    def _refresh_agent_poses(self) -> None:
+        """Pull fresh positions/directions from the simulator for all agents."""
+        try:
+            humanoid_ids = [agent.humanoid.id for agent in self.agents.values() if agent.humanoid]
+            if not humanoid_ids:
+                logger.debug("No humanoid IDs to refresh")
+                return
+
+            poses = self.communicator.get_position_and_direction(humanoid_ids=humanoid_ids)
+
+            if self.verbose:
+                logger.info(f"Pose refresh: queried IDs {humanoid_ids}, got {len(poses)} results")
+                logger.info(f"Pose data: {poses}")
+
+            for agent_id, agent in self.agents.items():
+                if not agent.humanoid:
+                    continue
+                key = ('humanoid', agent.humanoid.id)
+                if key in poses:
+                    pos, yaw = poses[key]
+                    old_pos = agent.humanoid.position
+                    agent.humanoid.position = pos
+                    agent.humanoid.direction = yaw  # setter converts yaw to direction vector
+                    if self.verbose:
+                        logger.info(f"Agent {agent_id}: position updated from ({old_pos.x:.1f}, {old_pos.y:.1f}) to ({pos.x:.1f}, {pos.y:.1f})")
+                else:
+                    if self.verbose:
+                        logger.warning(f"Agent {agent_id}: key {key} not found in poses. Available keys: {list(poses.keys())}")
+        except Exception as e:
+            logger.error(f"Pose refresh failed: {e}", exc_info=True)
+
     def process_action(self, agent_id: str, action: AgentAction) -> dict[str, Any]:
         """Process an agent's action."""
         agent = self.agents[agent_id]
+
+        if self.verbose:
+            logger.info(f"Agent {agent_id} action: {action.action} params={action.action_params}")
 
         # Skip if agent is tagged (hiders only)
         if agent_id in self.tagged_hiders:
@@ -371,7 +408,14 @@ Respond with a JSON object:
             return self._process_search(agent_id, agent)
         elif action_name == "call_out":
             return self._process_call_out(agent_id, params)
-        elif action_name in ("wait", "look_around", "peek"):
+        elif action_name == "wait":
+            # Wait action - agent stays in place
+            wait_duration = min(max(float(params.get("duration", 1)), 0.5), 5)
+            time.sleep(wait_duration)
+            return {"success": True, "message": f"Waited for {wait_duration}s"}
+        elif action_name in ("look_around", "peek"):
+            # These take a moment to complete
+            time.sleep(0.5)
             return {"success": True, "message": f"You {action_name}"}
         else:
             return {"success": True, "message": "No action taken"}
@@ -379,15 +423,23 @@ Respond with a JSON object:
     def _process_move(self, agent, params: dict) -> dict[str, Any]:
         """Process a move action."""
         direction = params.get("direction", "forward")
-        duration = min(max(float(params.get("duration", 1)), 1), 5)
+        duration = min(max(float(params.get("duration", 1)), 0.5), 5)
 
         # humanoid_step_forward(humanoid_id, duration, direction)
         # direction: 0 = forward, 1 = backward
+        # NOTE: humanoid_step_forward already blocks for 'duration' internally
+        if self.verbose:
+            logger.info(f"Moving humanoid {agent.humanoid.id} {direction} for {duration}s")
+
         if direction == "forward":
             self.communicator.humanoid_step_forward(agent.humanoid.id, duration, 0)
         elif direction == "backward":
             self.communicator.humanoid_step_forward(agent.humanoid.id, duration, 1)
-        # Left/right would require lateral movement or turn+move
+        else:
+            return {"success": False, "message": f"Unknown direction: {direction}"}
+
+        if self.verbose:
+            logger.info(f"Move command completed for humanoid {agent.humanoid.id}")
 
         return {"success": True, "message": f"Moved {direction} for {duration}s"}
 
@@ -397,6 +449,9 @@ Respond with a JSON object:
         direction = params.get("direction", "right")
 
         self.communicator.humanoid_rotate(agent.humanoid.id, angle, direction)
+
+        # Wait for the rotation to complete (rotation takes ~1 second in the simulation)
+        time.sleep(1.0)
 
         return {"success": True, "message": f"Turned {direction} {angle} degrees"}
 
